@@ -235,42 +235,44 @@ cask "adobe-acrobat-pro-sca" do
     end
   end
 
-  uninstall quit: [
-    "com.adobe.Acrobat.Pro",
-    "com.adobe.distiller",
-  ]
+  unless installation_mode == :stage_only
+    uninstall quit: [
+      "com.adobe.Acrobat.Pro",
+      "com.adobe.distiller",
+    ]
 
-  # Destructive cleanup is intentionally reserved for an explicit --zap.
-  zap launchctl: [
-        "Adobe_Genuine_Software_Integrity_Service",
-        "com.adobe.AAM.Startup-1.0",
-        "com.adobe.AAM.Updater-1.0",
-        "com.adobe.agsservice",
-        "com.adobe.ARMDC.Communicator",
-        "com.adobe.ARMDC.SMJobBlessHelper",
-        "com.adobe.ARMDCHelper.cc24aef4a1b90ed56a725c38014c95072f92651fb65e1bf9c8e43c37a23d420d",
-      ],
-      pkgutil:   [
-        "com.adobe.acrobat.DC.*",
-        "com.adobe.AcroServicesUpdater",
-        "com.adobe.armdc.app.pkg",
-        "com.adobe.PDApp.AdobeApplicationManager.installer.pkg",
-      ],
-      delete:    [
-        "/Applications/Adobe Acrobat/",
-        "/Applications/Adobe Acrobat DC/",
-      ],
-      trash:     [
-        "~/Library/Application Support/Adobe/Acrobat",
-        "~/Library/Caches/Acrobat",
-        "~/Library/Caches/com.adobe.Acrobat.Pro",
-        "~/Library/HTTPStorages/com.adobe.Acrobat.Pro",
-        "~/Library/HTTPStorages/com.adobe.Acrobat.Pro.binarycookies",
-        "~/Library/Preferences/Adobe/Acrobat",
-        "~/Library/Preferences/com.adobe.Acrobat.Pro.plist",
-        "~/Library/Saved Application State/com.adobe.Acrobat.Pro.savedState",
-        "~/Library/WebKit/com.adobe.Acrobat.Pro",
-      ]
+    # Destructive cleanup is intentionally reserved for an explicit --zap.
+    zap launchctl: [
+          "Adobe_Genuine_Software_Integrity_Service",
+          "com.adobe.AAM.Startup-1.0",
+          "com.adobe.AAM.Updater-1.0",
+          "com.adobe.agsservice",
+          "com.adobe.ARMDC.Communicator",
+          "com.adobe.ARMDC.SMJobBlessHelper",
+          "com.adobe.ARMDCHelper.cc24aef4a1b90ed56a725c38014c95072f92651fb65e1bf9c8e43c37a23d420d",
+        ],
+        pkgutil:   [
+          "com.adobe.acrobat.DC.*",
+          "com.adobe.AcroServicesUpdater",
+          "com.adobe.armdc.app.pkg",
+          "com.adobe.PDApp.AdobeApplicationManager.installer.pkg",
+        ],
+        delete:    [
+          "/Applications/Adobe Acrobat/",
+          "/Applications/Adobe Acrobat DC/",
+        ],
+        trash:     [
+          "~/Library/Application Support/Adobe/Acrobat",
+          "~/Library/Caches/Acrobat",
+          "~/Library/Caches/com.adobe.Acrobat.Pro",
+          "~/Library/HTTPStorages/com.adobe.Acrobat.Pro",
+          "~/Library/HTTPStorages/com.adobe.Acrobat.Pro.binarycookies",
+          "~/Library/Preferences/Adobe/Acrobat",
+          "~/Library/Preferences/com.adobe.Acrobat.Pro.plist",
+          "~/Library/Saved Application State/com.adobe.Acrobat.Pro.savedState",
+          "~/Library/WebKit/com.adobe.Acrobat.Pro",
+        ]
+  end
 
   caveats <<~EOS
     This cask selects its installer from the current machine state:
