@@ -36,6 +36,7 @@ cask "adobe-acrobat-pro-sca" do
 
       def self.installation_mode(path, app_version, manifest_version)
         return :full unless path
+        return :stage_only if app_version == manifest_version.to_s
 
         :update
       end
@@ -113,6 +114,8 @@ cask "adobe-acrobat-pro-sca" do
   installation_mode = Utils::AdobeAcrobatProSca.installation_mode(app_path, app_version, version)
 
   case installation_mode
+  when :stage_only
+    url Utils::AdobeAcrobatProSca.version_url
   when :update
     url Utils::AdobeAcrobatProSca.update_url(version),
         user_agent: :fake
@@ -140,6 +143,8 @@ cask "adobe-acrobat-pro-sca" do
     pkg "AcrobatUpdate.pkg"
   when :full
     pkg Utils::AdobeAcrobatProSca.full_installer_package
+  when :stage_only
+    stage_only true
   end
 
   if installation_mode == :full
