@@ -132,8 +132,7 @@ cask "adobe-acrobat-pro-sca" do
   case installation_mode
   when :update
     url Utils::AdobeAcrobatProSca.update_url(version),
-        user_agent: :fake,
-        verified:   "ardownload3.adobe.com/pub/adobe/acrobat/mac/AcrobatDC/"
+        user_agent: :fake
   else
     url "https://trials.adobe.com/AdobeProducts/APRO/Acrobat_HelpX/osx10/AcrobatSCA_DC_Web_WWMUI.dmg",
         cookies:    { "MM_TRIALS" => "1234" },
