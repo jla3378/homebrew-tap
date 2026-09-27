@@ -53,23 +53,6 @@ cask "adobe-acrobat-pro-sca" do
         "https://ardownload3.adobe.com/pub/adobe/acrobat/mac/AcrobatDC/#{no_dots}/AcrobatSCADCUpd#{no_dots}.dmg"
       end
 
-      def self.acrobat_package_versions(package_info_paths)
-        package_info_paths.each_with_object([]) do |path, versions|
-          contents = File.read(path)
-          next unless contents.match?(/\bidentifier="com\.adobe\.acrobat\.[^"]+"/)
-
-          versions << contents[/<pkg-info\b[^>]*\sversion="([^"]+)"/, 1]
-        end.uniq
-      end
-
-      def self.manifest_version_available?(package_versions, manifest_version)
-        package_versions.include?(manifest_version.to_s)
-      end
-
-      def self.full_installer_requires_update?(package_versions, manifest_version)
-        !manifest_version_available?(package_versions, manifest_version)
-      end
-
       def self.current_version
         return @current_version if defined?(@current_version)
 
@@ -159,77 +142,91 @@ cask "adobe-acrobat-pro-sca" do
     pkg Utils::AdobeAcrobatProSca.full_installer_package
   end
 
-  preflight do
-    if installation_mode == :full
-      require "fileutils"
+  if installation_mode == :full
+    preflight_steps do
+      run "/usr/bin/ruby",
+          args:           ["-e", <<~'RUBY'],
+            require "fileutils"
+            require "pathname"
 
-      expanded_path = staged_path/".full-installer-version-check"
-      FileUtils.rm_rf(expanded_path)
+            staged_path = Pathname(ENV.fetch("STAGED_PATH"))
+            version = ENV.fetch("VERSION")
+            full_package = staged_path.join("Acrobat/Acrobat DC SCA Installer.pkg")
+            expanded_path = staged_path.join(".full-installer-version-check")
+            update_dmg = staged_path.join(".manifest-update.dmg")
+            update_mount = staged_path.join(".manifest-update")
+            update_package = staged_path.join("AcrobatManifestUpdate.pkg")
 
-      begin
-        system_command "/usr/sbin/pkgutil",
-                       args:         ["--expand-full", (staged_path/Utils::AdobeAcrobatProSca.full_installer_package).to_s,
-                                       expanded_path.to_s],
-                       print_stdout: false
+            FileUtils.rm_rf([expanded_path, update_dmg, update_mount, update_package])
 
-        package_infos = Dir.glob((expanded_path/"**"/"PackageInfo").to_s)
-        package_versions = Utils::AdobeAcrobatProSca.acrobat_package_versions(package_infos)
-        next unless Utils::AdobeAcrobatProSca.full_installer_requires_update?(package_versions, version)
+            begin
+              abort "Could not expand the Acrobat installer package" unless system(
+                "/usr/sbin/pkgutil", "--expand-full", full_package.to_s, expanded_path.to_s
+              )
 
-        update_dmg = staged_path/".manifest-update.dmg"
-        update_mount = staged_path/".manifest-update"
-        update_package = staged_path/Utils::AdobeAcrobatProSca.manifest_update_package
-        FileUtils.rm_rf([update_dmg, update_mount, update_package])
+              package_versions = Dir.glob(expanded_path.join("**", "PackageInfo")).map do |path|
+                contents = File.read(path)
+                next unless contents.match?(/\bidentifier="com\.adobe\.acrobat\.[^"]+"/)
 
-        begin
-          system_command "/usr/bin/curl",
-                         args:         ["--fail", "--location", "--output", update_dmg.to_s,
-                                         "--user-agent", HOMEBREW_USER_AGENT_FAKE_SAFARI,
-                                         Utils::AdobeAcrobatProSca.update_url(version)],
-                         print_stdout: false
+                contents[%r{<pkg-info\b[^>]*\sversion="([^"]+)"}, 1]
+              end.compact
 
-          FileUtils.mkdir_p(update_mount)
-          system_command "/usr/bin/hdiutil",
-                         args:         ["attach", "-nobrowse", "-readonly", "-mountpoint", update_mount.to_s,
-                                         update_dmg.to_s],
-                         print_stdout: false
+              unless package_versions.include?(version)
+                no_dots = version.delete(".")
+                update_url = "https://ardownload3.adobe.com/pub/adobe/acrobat/mac/AcrobatDC/" +
+                             no_dots + "/AcrobatSCADCUpd" + no_dots + ".dmg"
+                user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15"
+                abort "Could not download the Acrobat manifest update" unless system(
+                  "/usr/bin/curl", "--fail", "--location", "--output", update_dmg.to_s,
+                  "--user-agent", user_agent, update_url
+                )
 
-          update_sources = Dir.glob((update_mount/"**"/"Acrobat*Upd*.pkg").to_s)
-          raise "Expected one Acrobat update package, found #{update_sources.length}." unless update_sources.length == 1
+                FileUtils.mkdir_p(update_mount)
+                abort "Could not mount the Acrobat manifest update" unless system(
+                  "/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint",
+                  update_mount.to_s, update_dmg.to_s
+                )
 
-          FileUtils.cp(update_sources.first, update_package)
-        ensure
-          system_command "/usr/sbin/diskutil",
-                         args:         ["eject", update_mount.to_s],
-                         must_succeed: false,
-                         print_stdout: false
-          FileUtils.rm_rf([update_dmg, update_mount])
-        end
+                update_sources = Dir.glob(update_mount.join("**", "Acrobat*Upd*.pkg"))
+                abort "Expected one Acrobat update package, found " + update_sources.length.to_s + "." unless update_sources.length == 1
 
-      ensure
-        FileUtils.rm_rf(expanded_path)
-      end
+                FileUtils.cp(update_sources.first, update_package)
+              end
+            ensure
+              system("/usr/sbin/diskutil", "eject", update_mount.to_s, out: File::NULL, err: File::NULL)
+              FileUtils.rm_rf([expanded_path, update_dmg, update_mount])
+            end
+          RUBY
+          env:            {
+            "STAGED_PATH" => "{{staged_path}}",
+            "VERSION"     => "{{version}}",
+          },
+          network_access: true,
+          writable_paths: ["{{staged_path}}"]
     end
-  end
 
-  postflight do
-    next unless installation_mode == :full
+    postflight_steps do
+      if_path_exists "AcrobatManifestUpdate.pkg" do
+        run "/usr/bin/ruby",
+            args:         ["-e", <<~RUBY, "--", "{{staged_path}}/AcrobatManifestUpdate.pkg"],
+              require "fileutils"
 
-    require "fileutils"
-
-    update_package = staged_path/Utils::AdobeAcrobatProSca.manifest_update_package
-    next unless update_package.exist?
-
-    begin
-      current_user = User.current&.to_s
-      system_command "/usr/sbin/installer",
-                     args:         ["-pkg", update_package.to_s, "-target", "/"],
-                     env:          { "LOGNAME" => current_user, "USER" => current_user, "USERNAME" => current_user },
-                     print_stdout: true,
-                     sudo:         true,
-                     sudo_as_root: true
-    ensure
-      FileUtils.rm_rf(update_package)
+              package = ARGV.fetch(0)
+              begin
+                system("/usr/sbin/installer", "-pkg", package, "-target", "/")
+                exit($?&.exitstatus || 1)
+              ensure
+                FileUtils.rm_f(package)
+              end
+            RUBY
+            env:          {
+              "LOGNAME"  => "{{user}}",
+              "USER"     => "{{user}}",
+              "USERNAME" => "{{user}}",
+            },
+            sudo:         true,
+            print_stdout: true
+      end
     end
   end
 
